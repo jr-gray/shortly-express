@@ -2,8 +2,11 @@ var express = require('express');
 var util = require('./lib/utility');
 var partials = require('express-partials');
 var bodyParser = require('body-parser');
+var bcrypt = require('bcrypt-nodejs');
+var session = require('express-session');
 
 
+var utility = require('./lib/utility.js');
 var db = require('./app/config');
 var Users = require('./app/collections/users');
 var User = require('./app/models/user');
@@ -21,23 +24,84 @@ app.use(bodyParser.json());
 // Parse forms (signup/login)
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(__dirname + '/public'));
+app.use(function(req, res) {
+  console.log(req.method, req.url);
+  req.next();
+});
+
+app.use(session({
+  key: 'key',
+  secret: 'secret'
+}));
+
 
 
 app.get('/', 
 function(req, res) {
-  res.render('index');
+  if (!req.session.loggedIn) {
+    res.redirect(301, './login');
+  } else {
+    res.render('index');
+  }
 });
 
 app.get('/create', 
+// if (//not authenticated, send to /login)
 function(req, res) {
+  if (!req.session.loggedIn) {
+    res.redirect(301, './login');
+  }
   res.render('index');
+});
+
+app.get('/login',
+function(req, res) {
+  res.render('login');
+});
+
+app.post('/login',
+function (req, res) {
+  new User({'username': req.body.username}).fetch().then(function(model) {
+    bcrypt.compare(req.body.password, model.get('password'), function(err, match) {
+      if (err) {
+        //console.error(err);
+        res.redirect(301, './login');
+      }
+      if (match) {
+        req.session.loggedIn = true;
+        res.redirect(301, './');
+      } else {
+        res.redirect(301, './login');
+      }
+    });
+  });
+  //res.end();
+});
+
+app.get('/signup', 
+function(req, res) {
+  res.render('signup');
+});
+
+app.post('/signup',
+function(req, res) {
+  bcrypt.genSalt(10, function(err, salt) {
+    bcrypt.hash(req.body.password, salt, null, function(err, hash) {
+      new User({'username': req.body.username, 'password': hash}).save();
+    });
+  });
+  res.redirect(301, './login');
 });
 
 app.get('/links', 
 function(req, res) {
-  Links.reset().fetch().then(function(links) {
-    res.status(200).send(links.models);
-  });
+  if (!req.session.loggedIn) {
+    res.redirect(301, './login');
+  } else {
+    Links.reset().fetch().then(function(links) {
+      res.status(200).send(links.models);
+    });
+  }
 });
 
 app.post('/links', 
